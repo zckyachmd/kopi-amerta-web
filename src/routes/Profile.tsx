@@ -68,7 +68,7 @@ export const Profile: React.FC = () => {
 
           <div className="flex justify-between">
             <span className="font-medium text-gray-600">Joined:</span>
-            <span>{new Date(user.joinedAt).toLocaleDateString()}</span>
+            <span>{new Date(user.createdAt).toLocaleDateString()}</span>
           </div>
         </CardContent>
 

@@ -18,13 +18,10 @@ import useDocumentTitle from "@/hooks/useDocumentTitle";
 export const loader = async () => {
   try {
     const response = await apiFetch("/cart");
-
     if (!response) {
       throw new Error("Failed to fetch cart!");
     }
-
     const { data } = await response.json();
-
     return data || {};
   } catch {
     return redirect("/login");
@@ -52,7 +49,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             throw new Error(error.message || "Failed to update quantity.");
           }
         );
-
         return { status: 200 };
       }
 
@@ -66,7 +62,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             throw new Error(error.message || "Failed to delete item.");
           }
         );
-
         return { status: 200 };
       }
 
@@ -81,7 +76,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           }
         );
         const { order } = await response.json();
-
         return { status: 200, order };
       }
 
@@ -102,29 +96,38 @@ export const Cart: React.FC = () => {
   const carts = useLoaderData() as Awaited<ReturnType<typeof loader>>;
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+  const [tempQuantities, setTempQuantities] = useState<{ [key: string]: number }>({});
+  const [timeoutId, setTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
   useDocumentTitle('Cart');
 
-  const handleQuantityChange = async (itemId: string, quantity: number) => {
-    const scrollPosition = window.scrollY;
-    sessionStorage.setItem("scrollPosition", scrollPosition.toString());
+  const handleQuantityChange = (itemId: string, quantity: number) => {
+    setTempQuantities((prev) => ({ ...prev, [itemId]: quantity }));
 
-    const formData = new FormData();
-    formData.append("actionType", "updateQuantity");
-    formData.append("itemId", itemId);
-    formData.append("quantity", quantity.toString());
-
-    const response = await action({
-      request: new Request("", {
-        method: "POST",
-        body: formData,
-      }),
-      params: {},
-    });
-
-    if (response.status === 200) {
-      navigate(`/carts`, { state: { scrollPosition }, replace: true });
+    if (timeoutId) {
+      clearTimeout(timeoutId);
     }
+
+    const id = setTimeout(async () => {
+      const formData = new FormData();
+      formData.append("actionType", "updateQuantity");
+      formData.append("itemId", itemId);
+      formData.append("quantity", quantity.toString());
+
+      const response = await action({
+        request: new Request("", {
+          method: "POST",
+          body: formData,
+        }),
+        params: {},
+      });
+
+      if (response.status === 200) {
+        navigate(`/carts`, { replace: true });
+      }
+    }, 500);
+
+    setTimeoutId(id);
   };
 
   const handleRemoveItem = async (itemId: string) => {
@@ -171,7 +174,6 @@ export const Cart: React.FC = () => {
 
       if (response.status === 200) {
         const { id } = response.order;
-
         toast.success("Checkout successful!");
         navigate(`/order/${id}`);
       }
@@ -219,7 +221,7 @@ export const Cart: React.FC = () => {
                   </h2>
                   <p className="text-md text-gray-600">
                     Rp {item.product.price.toLocaleString("id-ID")} x{" "}
-                    {item.quantity}
+                    {tempQuantities[item.id] || item.quantity}
                   </p>
                   {item.product.stock_qty === 0 || !item.product.isAvailable ? (
                     <Badge
@@ -238,11 +240,11 @@ export const Cart: React.FC = () => {
                         e.stopPropagation();
                         handleQuantityChange(
                           item.id,
-                          Math.max(item.quantity - 1, 1)
+                          Math.max((tempQuantities[item.id] || item.quantity) - 1, 1)
                         );
                       }}
                       disabled={
-                        item.quantity <= 1 ||
+                        (tempQuantities[item.id] || item.quantity) <= 1 ||
                         item.product.stock_qty === 0 ||
                         !item.product.isAvailable
                       }
@@ -251,7 +253,7 @@ export const Cart: React.FC = () => {
                     </Button>
                     <input
                       type="number"
-                      value={item.quantity}
+                      value={tempQuantities[item.id] || item.quantity}
                       min="1"
                       className="input-no-spinner mx-2 text-xl w-12 text-center border border-gray-300 rounded"
                       onChange={(e) => {
@@ -269,10 +271,10 @@ export const Cart: React.FC = () => {
                       className="bg-gray-300 text-black hover:bg-gray-400 w-8 h-8 flex items-center justify-center rounded"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleQuantityChange(item.id, item.quantity + 1);
+                        handleQuantityChange(item.id, (tempQuantities[item.id] || item.quantity) + 1);
                       }}
                       disabled={
-                        item.product.stock_qty <= item.quantity ||
+                        item.product.stock_qty <= (tempQuantities[item.id] || item.quantity) ||
                         item.product.stock_qty === 0 ||
                         !item.product.isAvailable
                       }
